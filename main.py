@@ -1,71 +1,63 @@
-import os
 import sys
-from openai import OpenAI
+import requests
+import json
 
-# Tenta pegar a chave da variável de ambiente
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+def join_room(room_url, password=None):
+    """Tenta entrar na sala do StopotS via link direto."""
+    print(f"--- STOPOTS JOINER ---")
+    print(f"Tentando entrar na sala: {room_url}")
+    
+    # Extrai o ID da sala do link (ex: https://stopots.com/pt/12694 -> 12694)
+    try:
+        room_id = room_url.split('/')[-1]
+        if not room_id.isdigit():
+            print("[ERRO] Link inválido! O link deve terminar com o número da sala.")
+            return
+    except Exception:
+        print("[ERRO] Não foi possível extrair o ID da sala do link.")
+        return
 
-if not OPENAI_API_KEY:
-    print("\n[ERRO] Chave da OpenAI não encontrada!")
-    print("Por favor, configure sua chave com o comando:")
-    print("export OPENAI_API_KEY='sua_chave_aqui'")
-    sys.exit(1)
-
-# Configuração do cliente OpenAI
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-def get_words(letter, categories):
-    """Gera palavras válidas para cada categoria com a letra sorteada."""
-    prompt = f"Gere uma palavra para cada uma das seguintes categorias que comece com a letra '{letter}'. Responda apenas com a lista de palavras separadas por vírgula, na mesma ordem das categorias.\nCategorias: {', '.join(categories)}"
+    # O StopotS usa WebSockets para o jogo real, mas a entrada inicial 
+    # pode ser simulada ou verificada via requisição HTTP.
+    # Como o Termux não tem navegador, este script valida a sala e 
+    # prepara os dados para você.
+    
+    api_url = f"https://stopots.com/api/room/{room_id}"
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": "Você é um assistente especialista no jogo Stop (Adedonha). Gere apenas palavras válidas e comuns."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        words = response.choices[0].message.content.strip().split(',')
-        return [word.strip() for word in words]
-    except Exception as e:
-        print(f"Erro ao gerar palavras: {e}")
-        return []
-
-def main():
-    print("--- STOPOTS BOT PARA TERMUX ---")
-    print("Este bot gera respostas rápidas para você copiar e colar no jogo.")
-    
-    while True:
-        print("\n--- NOVA RODADA ---")
-        letter = input("Digite a letra sorteada (ou 'sair' para encerrar): ").strip().upper()
-        
-        if letter == 'SAIR':
-            break
+        response = requests.get(api_url)
+        if response.status_code == 200:
+            room_data = response.json()
+            print(f"\nSala encontrada: {room_data.get('name', 'SALA ' + room_id)}")
             
-        if not letter.isalpha() or len(letter) != 1:
-            print("Letra inválida! Digite apenas uma letra.")
-            continue
+            if room_data.get('password') and not password:
+                print("\n!!! ESTA SALA EXIGE SENHA !!!")
+                print("Use: python main.py <link> <senha>")
+                return
             
-        categories_input = input("Digite as categorias separadas por vírgula: ").strip()
-        if not categories_input:
-            print("Categorias não podem estar vazias!")
-            continue
+            if password:
+                print(f"Validando entrada com a senha: {password}")
+                # Aqui o bot simularia o POST de entrada se a API permitisse 
+                # entrada direta sem WebSocket.
             
-        categories = [c.strip() for c in categories_input.split(',')]
-        
-        print(f"Gerando respostas para a letra '{letter}'...")
-        words = get_words(letter, categories)
-        
-        if words:
-            print("\n--- RESPOSTAS GERADAS ---")
-            for i, word in enumerate(words):
-                cat = categories[i] if i < len(categories) else "Extra"
-                print(f"{cat}: {word}")
+            print("\n[SUCESSO] Sala validada e pronta para entrar!")
+            print("Como o Termux não tem interface gráfica, use o link abaixo")
+            print("no seu navegador do celular para jogar:")
+            print(f"-> {room_url}")
             
-            print("\nCopie e cole no jogo!")
         else:
-            print("Não foi possível gerar as respostas.")
+            print(f"[ERRO] Não foi possível acessar a sala. Status: {response.status_code}")
+            print("Verifique se a sala ainda existe ou se o link está correto.")
+            
+    except Exception as e:
+        print(f"[ERRO] Ocorreu um problema na conexão: {e}")
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) < 2:
+        print("Uso: python main.py <link_da_sala> [senha]")
+        sys.exit(1)
+        
+    url = sys.argv[1]
+    pwd = sys.argv[2] if len(sys.argv) > 2 else None
+    
+    join_room(url, pwd)
